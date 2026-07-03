@@ -13,6 +13,11 @@ import org.apache.commons.lang3.StringUtils;
 import org.hibernate.envers.Audited;
 import org.hibernate.proxy.HibernateProxy;
 import org.openmrs.BaseOpenmrsObject;
+import org.openmrs.Concept;
+import org.openmrs.Location;
+import org.openmrs.Person;
+import org.openmrs.User;
+import org.openmrs.api.context.Context;
 import org.openmrs.util.OpenmrsClassLoader;
 import org.openmrs.module.auditlogweb.api.dto.AuditFieldDiff;
 import org.reflections.Reflections;
@@ -28,6 +33,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
@@ -192,9 +198,11 @@ public class UtilClass {
 			String currVal;
 			boolean failedOld = false;
 			boolean failedCurr = false;
+			Object currFieldValue = null;
+			Object oldFieldValue = null;
 			
 			try {
-				Object currFieldValue = field.get(currentEntity);
+				currFieldValue = field.get(currentEntity);
 				currVal = serializeFieldValue(currFieldValue);
 			}
 			catch (Exception e) {
@@ -204,7 +212,7 @@ public class UtilClass {
 			}
 			
 			try {
-				Object oldFieldValue = oldEntity != null ? field.get(oldEntity) : null;
+				oldFieldValue = oldEntity != null ? field.get(oldEntity) : null;
 				oldVal = serializeFieldValue(oldFieldValue);
 			}
 			catch (Exception e) {
@@ -219,7 +227,16 @@ public class UtilClass {
 			}
 			
 			boolean isDifferent = !Objects.equals(oldVal, currVal);
-			diffs.add(new AuditFieldDiff(field.getName(), oldVal, currVal, isDifferent));
+			AuditFieldDiff diff = new AuditFieldDiff();
+			diff.setFieldName(field.getName());
+			diff.setOldValue(oldVal);
+			diff.setCurrentValue(currVal);
+			diff.setChanged(isDifferent);
+			if (isDifferent) {
+				diff.setOldDisplay(resolveDisplayValue(oldFieldValue));
+				diff.setCurrentDisplay(resolveDisplayValue(currFieldValue));
+			}
+			diffs.add(diff);
 		}
 		return diffs;
 	}
@@ -348,6 +365,10 @@ public class UtilClass {
 			return "";
 		}
 		
+		if (value instanceof Date) {
+			return Instant.ofEpochMilli(((Date) value).getTime()).toString();
+		}
+		
 		String actualClassName = getActualClassName(value);
 		if (isPrimitiveOrWrapper(value.getClass())) {
 			return String.valueOf(value);
@@ -450,6 +471,40 @@ public class UtilClass {
 		}
 		
 		return "";
+	}
+	
+	public static String resolveDisplayValue(Object value) {
+		if (!(value instanceof BaseOpenmrsObject)) {
+			return null;
+		}
+		Integer id = getIdFromObject(value);
+		if (id == null) {
+			return null;
+		}
+		try {
+			String name = null;
+			if (value instanceof Concept) {
+				Concept concept = Context.getConceptService().getConcept(id);
+				name = concept != null ? concept.getDisplayString() : null;
+			} else if (value instanceof User) {
+				User user = Context.getUserService().getUser(id);
+				name = user != null ? user.getDisplayString() : null;
+			} else if (value instanceof Location) {
+				Location location = Context.getLocationService().getLocation(id);
+				name = location != null ? location.getName() : null;
+			} else if (value instanceof Person) {
+				Person person = Context.getPersonService().getPerson(id);
+				name = (person != null && person.getPersonName() != null) ? person.getPersonName().getFullName() : null;
+			}
+			if (StringUtils.isBlank(name)) {
+				return null;
+			}
+			return name + " (" + getActualClassName(value) + "#" + id + ")";
+		}
+		catch (Exception e) {
+			log.debug("Display resolution failed for {}#{}: {}", getActualClassName(value), id, e.getMessage());
+			return null;
+		}
 	}
 	
 	public static Map<String, Class<?>> getFieldTypes(Class<?> clazz) {
