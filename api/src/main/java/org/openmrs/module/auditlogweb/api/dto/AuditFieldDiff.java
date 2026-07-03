@@ -20,4 +20,6 @@ public class AuditFieldDiff {
     private String oldValue;
     private String currentValue;
     private boolean changed;
+    private String oldDisplay;
+    private String currentDisplay;
 }

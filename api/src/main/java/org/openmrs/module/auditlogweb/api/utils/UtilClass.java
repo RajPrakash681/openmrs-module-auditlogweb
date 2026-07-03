@@ -12,6 +12,11 @@ import org.apache.commons.lang3.StringUtils;
 import org.hibernate.envers.Audited;
 import org.hibernate.proxy.HibernateProxy;
 import org.openmrs.BaseOpenmrsObject;
+import org.openmrs.Concept;
+import org.openmrs.Location;
+import org.openmrs.Person;
+import org.openmrs.User;
+import org.openmrs.api.context.Context;
 import org.openmrs.module.auditlogweb.api.dto.AuditFieldDiff;
 import org.reflections.Reflections;
 import org.reflections.scanners.Scanners;
@@ -27,6 +32,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
@@ -173,9 +179,11 @@ public class UtilClass {
             String currVal;
             boolean failedOld = false;
             boolean failedCurr = false;
+            Object currFieldValue = null;
+            Object oldFieldValue = null;
 
             try {
-                Object currFieldValue = field.get(currentEntity);
+                currFieldValue = field.get(currentEntity);
                 currVal = serializeFieldValue(currFieldValue);
             } catch (Exception e) {
                 log.warn("Failed to read current value of field '{}': {}", field.getName(), e.getMessage());
@@ -184,7 +192,7 @@ public class UtilClass {
             }
 
             try {
-                Object oldFieldValue = oldEntity != null ? field.get(oldEntity) : null;
+                oldFieldValue = oldEntity != null ? field.get(oldEntity) : null;
                 oldVal = serializeFieldValue(oldFieldValue);
             } catch (Exception e) {
                 log.warn("Failed to read old value of field '{}': {}", field.getName(), e.getMessage());
@@ -198,7 +206,17 @@ public class UtilClass {
             }
 
             boolean isDifferent = !Objects.equals(oldVal, currVal);
-            diffs.add(new AuditFieldDiff(field.getName(), oldVal, currVal, isDifferent));
+
+            AuditFieldDiff diff = new AuditFieldDiff();
+            diff.setFieldName(field.getName());
+            diff.setOldValue(oldVal);
+            diff.setCurrentValue(currVal);
+            diff.setChanged(isDifferent);
+            if (isDifferent) {
+                diff.setOldDisplay(resolveDisplayValue(oldFieldValue));
+                diff.setCurrentDisplay(resolveDisplayValue(currFieldValue));
+            }
+            diffs.add(diff);
         }
         return diffs;
     }
@@ -297,6 +315,11 @@ public class UtilClass {
     public static String serializeFieldValue(Object value) {
         if (value == null) {
             return "";
+        }
+
+        if (value instanceof Date) {
+            // ISO-8601; ofEpochMilli(getTime()) is safe across Date subclasses (java.sql.Date.toInstant() throws).
+            return Instant.ofEpochMilli(((Date) value).getTime()).toString();
         }
 
         String actualClassName = getActualClassName(value);
@@ -407,6 +430,47 @@ public class UtilClass {
         }
 
         return "";
+    }
+
+    /**
+     * Resolves a human-readable label for an entity-reference value by looking it up live
+     * by id (e.g. "Malaria (Concept#88)"), or {@code null} if it is not a resolvable reference.
+     *
+     * @param value the raw field value
+     * @return a display label, or {@code null}
+     */
+    public static String resolveDisplayValue(Object value) {
+        if (!(value instanceof BaseOpenmrsObject)) {
+            return null;
+        }
+        Integer id = getIdFromObject(value);
+        if (id == null) {
+            return null;
+        }
+        try {
+            String name = null;
+            if (value instanceof Concept) {
+                Concept concept = Context.getConceptService().getConcept(id);
+                name = concept != null ? concept.getDisplayString() : null;
+            } else if (value instanceof User) {
+                User user = Context.getUserService().getUser(id);
+                name = user != null ? user.getDisplayString() : null;
+            } else if (value instanceof Location) {
+                Location location = Context.getLocationService().getLocation(id);
+                name = location != null ? location.getName() : null;
+            } else if (value instanceof Person) {
+                // Also covers Patient (extends Person).
+                Person person = Context.getPersonService().getPerson(id);
+                name = (person != null && person.getPersonName() != null) ? person.getPersonName().getFullName() : null;
+            }
+            if (StringUtils.isBlank(name)) {
+                return null;
+            }
+            return name + " (" + getActualClassName(value) + "#" + id + ")";
+        } catch (Exception e) {
+            log.debug("Display resolution failed for {}#{}: {}", getActualClassName(value), id, e.getMessage());
+            return null;
+        }
     }
 
     public static Map<String, Class<?>> getFieldTypes(Class<?> clazz) {

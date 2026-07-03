@@ -10,6 +10,10 @@ package org.openmrs.module.auditlogweb.api.utils;
 
 import org.hibernate.envers.Audited;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
+import org.openmrs.Concept;
+import org.openmrs.api.ConceptService;
+import org.openmrs.api.context.Context;
 import org.openmrs.module.auditlogweb.api.dto.AuditFieldDiff;
 import java.time.LocalDate;
 import java.time.Month;
@@ -21,6 +25,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.when;
 
 
 public class UtilClassUnitTest {
@@ -136,6 +143,39 @@ public class UtilClassUnitTest {
             }
         }
         assertTrue(foundChildField);
+    }
+
+    @Test
+    public void serializeFieldValue_shouldEmitIso8601ForUtilDate() {
+        assertEquals("1970-01-01T00:00:00Z", UtilClass.serializeFieldValue(new Date(0L)));
+    }
+
+    @Test
+    public void serializeFieldValue_shouldEmitIso8601ForSqlDateWithoutThrowing() {
+        assertEquals("1970-01-01T00:00:00Z", UtilClass.serializeFieldValue(new java.sql.Date(0L)));
+    }
+
+    @Test
+    public void resolveDisplayValue_shouldReturnNullForNonEntityValues() {
+        assertNull(UtilClass.resolveDisplayValue("just a string"));
+        assertNull(UtilClass.resolveDisplayValue(42));
+        assertNull(UtilClass.resolveDisplayValue(null));
+    }
+
+    @Test
+    public void resolveDisplayValue_shouldResolveConceptDisplayLiveById() {
+        Concept reference = new Concept();
+        reference.setConceptId(88);
+
+        Concept live = mock(Concept.class);
+        when(live.getDisplayString()).thenReturn("Malaria");
+        ConceptService conceptService = mock(ConceptService.class);
+        when(conceptService.getConcept(88)).thenReturn(live);
+
+        try (MockedStatic<Context> context = mockStatic(Context.class)) {
+            context.when(Context::getConceptService).thenReturn(conceptService);
+            assertEquals("Malaria (Concept#88)", UtilClass.resolveDisplayValue(reference));
+        }
     }
 
     // Dummy Audited class for testing only

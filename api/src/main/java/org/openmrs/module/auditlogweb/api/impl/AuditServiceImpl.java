@@ -374,6 +374,8 @@ public class AuditServiceImpl extends BaseOpenmrsService implements AuditService
                     updatedDiff.setOldValue(previousDiff.getOldValue());
                     updatedDiff.setCurrentValue(previousDiff.getCurrentValue());
                     updatedDiff.setChanged(true);
+                    updatedDiff.setOldDisplay(previousDiff.getOldDisplay());
+                    updatedDiff.setCurrentDisplay(previousDiff.getCurrentDisplay());
                     return updatedDiff;
                 })
                 .collect(Collectors.toList());
