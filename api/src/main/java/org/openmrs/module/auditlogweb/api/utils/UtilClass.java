@@ -14,7 +14,6 @@ import org.hibernate.envers.Audited;
 import org.hibernate.proxy.HibernateProxy;
 import org.openmrs.BaseOpenmrsObject;
 import org.openmrs.Concept;
-import org.openmrs.Location;
 import org.openmrs.OpenmrsMetadata;
 import org.openmrs.Person;
 import org.openmrs.User;
@@ -37,6 +36,7 @@ import java.lang.reflect.Type;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -60,6 +60,8 @@ import java.util.Map;
 public class UtilClass {
 	
 	private static final Logger log = LoggerFactory.getLogger(UtilClass.class);
+	
+	private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
 	
 	private static List<String> classesWithAuditAnnotation;
 	
@@ -371,8 +373,12 @@ public class UtilClass {
 			return "";
 		}
 		
+		if (value instanceof java.sql.Date) {
+			return ((java.sql.Date) value).toLocalDate().toString();
+		}
 		if (value instanceof Date) {
-			return Instant.ofEpochMilli(((Date) value).getTime()).toString();
+			return OffsetDateTime.ofInstant(Instant.ofEpochMilli(((Date) value).getTime()), ZoneId.systemDefault())
+			        .format(DATE_TIME_FORMATTER);
 		}
 		
 		String actualClassName = getActualClassName(value);
@@ -480,9 +486,10 @@ public class UtilClass {
 	}
 	
 	/**
-	 * Resolves an entity reference to a human label, looked up live by id, as "Name (Type#id)". The
-	 * label reflects the entity's current name; the retained Type#id token identifies the exact
-	 * referenced entity for revision-accurate auditing.
+	 * Resolves an entity reference to a human-readable label of the form "Name (Type#id)". For
+	 * OpenmrsMetadata (including Location) the name is read from the audited snapshot, so it reflects
+	 * the name as of that revision; for Concept/User/Person the name is looked up live by id (memoized
+	 * per request). The retained Type#id token always identifies the exact referenced entity.
 	 */
 	public static String resolveDisplayValue(Object value) {
 		return resolveDisplayValue(value, null);
@@ -499,7 +506,7 @@ public class UtilClass {
 		String token = getActualClassName(value) + "#" + id;
 		try {
 			// Metadata carries its name in memory (no query) and can vary per revision, so it is not cached.
-			if (value instanceof OpenmrsMetadata && !(value instanceof Location)) {
+			if (value instanceof OpenmrsMetadata) {
 				String name = ((OpenmrsMetadata) value).getName();
 				return StringUtils.isBlank(name) ? null : name + " (" + token + ")";
 			}
@@ -527,9 +534,6 @@ public class UtilClass {
 		} else if (value instanceof User) {
 			User user = Context.getUserService().getUser(id);
 			return user != null ? user.getDisplayString() : null;
-		} else if (value instanceof Location) {
-			Location location = Context.getLocationService().getLocation(id);
-			return location != null ? location.getName() : null;
 		} else if (value instanceof Person) {
 			Person person = Context.getPersonService().getPerson(id);
 			return (person != null && person.getPersonName() != null) ? person.getPersonName().getFullName() : null;

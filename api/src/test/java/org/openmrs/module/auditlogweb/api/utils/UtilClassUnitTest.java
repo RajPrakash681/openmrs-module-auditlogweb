@@ -172,13 +172,27 @@ public class UtilClassUnitTest {
 	}
 	
 	@Test
-	public void serializeFieldValue_shouldEmitIso8601ForUtilDate() {
-		assertEquals("1970-01-01T00:00:00Z", UtilClass.serializeFieldValue(new Date(0L)));
+	public void serializeFieldValue_shouldRenderSqlDateAsLocalDateOnly() {
+		assertEquals("2000-01-15", UtilClass.serializeFieldValue(java.sql.Date.valueOf("2000-01-15")));
 	}
 	
 	@Test
-	public void serializeFieldValue_shouldEmitIso8601ForSqlDateWithoutThrowing() {
-		assertEquals("1970-01-01T00:00:00Z", UtilClass.serializeFieldValue(new java.sql.Date(0L)));
+	public void serializeFieldValue_shouldRenderUtilDateInSystemZone() {
+		java.util.TimeZone original = java.util.TimeZone.getDefault();
+		try {
+			java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("UTC"));
+			assertEquals("1970-01-01T00:00:00Z", UtilClass.serializeFieldValue(new Date(0L)));
+			
+			// Non-UTC: a date-only value at local midnight must keep its local calendar day, not shift a day.
+			java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Asia/Kolkata"));
+			java.util.Calendar cal = java.util.Calendar.getInstance();
+			cal.clear();
+			cal.set(2000, java.util.Calendar.JANUARY, 15, 0, 0, 0);
+			assertEquals("2000-01-15T00:00:00+05:30", UtilClass.serializeFieldValue(new Date(cal.getTimeInMillis())));
+		}
+		finally {
+			java.util.TimeZone.setDefault(original);
+		}
 	}
 	
 	@Test
