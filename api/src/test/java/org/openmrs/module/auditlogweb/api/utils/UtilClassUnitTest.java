@@ -13,6 +13,7 @@ import org.hibernate.envers.Audited;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.openmrs.Concept;
+import org.openmrs.EncounterType;
 import org.openmrs.api.ConceptService;
 import org.openmrs.api.context.Context;
 import org.openmrs.module.auditlogweb.api.dto.AuditFieldDiff;
@@ -197,6 +198,14 @@ public class UtilClassUnitTest {
 			context.when(Context::getConceptService).thenReturn(conceptService);
 			assertEquals("Malaria (Concept#88)", UtilClass.resolveDisplayValue(reference));
 		}
+	}
+	
+	@Test
+	public void resolveDisplayValue_shouldResolveMetadataByName() {
+		EncounterType encounterType = new EncounterType();
+		encounterType.setEncounterTypeId(7);
+		encounterType.setName("Vitals");
+		assertEquals("Vitals (EncounterType#7)", UtilClass.resolveDisplayValue(encounterType));
 	}
 	
 	// Dummy Audited class for testing only

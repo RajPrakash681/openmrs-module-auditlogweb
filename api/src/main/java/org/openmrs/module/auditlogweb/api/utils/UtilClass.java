@@ -15,6 +15,7 @@ import org.hibernate.proxy.HibernateProxy;
 import org.openmrs.BaseOpenmrsObject;
 import org.openmrs.Concept;
 import org.openmrs.Location;
+import org.openmrs.OpenmrsMetadata;
 import org.openmrs.Person;
 import org.openmrs.User;
 import org.openmrs.api.context.Context;
@@ -473,6 +474,11 @@ public class UtilClass {
 		return "";
 	}
 	
+	/**
+	 * Resolves an entity reference to a human label, looked up live by id, as "Name (Type#id)". The
+	 * label reflects the entity's current name; the retained Type#id token identifies the exact
+	 * referenced entity for revision-accurate auditing.
+	 */
 	public static String resolveDisplayValue(Object value) {
 		if (!(value instanceof BaseOpenmrsObject)) {
 			return null;
@@ -495,6 +501,8 @@ public class UtilClass {
 			} else if (value instanceof Person) {
 				Person person = Context.getPersonService().getPerson(id);
 				name = (person != null && person.getPersonName() != null) ? person.getPersonName().getFullName() : null;
+			} else if (value instanceof OpenmrsMetadata) {
+				name = ((OpenmrsMetadata) value).getName();
 			}
 			if (StringUtils.isBlank(name)) {
 				return null;
