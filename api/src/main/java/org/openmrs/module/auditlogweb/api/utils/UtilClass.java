@@ -182,6 +182,11 @@ public class UtilClass {
 	 * @return a list of {@link AuditFieldDiff} showing name, old value, new value, and change flag
 	 */
 	public static List<AuditFieldDiff> computeFieldDiffs(Class<?> clazz, Object oldEntity, Object currentEntity) {
+		return computeFieldDiffs(clazz, oldEntity, currentEntity, null);
+	}
+	
+	public static List<AuditFieldDiff> computeFieldDiffs(Class<?> clazz, Object oldEntity, Object currentEntity,
+	        Map<String, String> displayCache) {
 		List<AuditFieldDiff> diffs = new ArrayList<>();
 		if (currentEntity == null) {
 			return diffs;
@@ -234,8 +239,8 @@ public class UtilClass {
 			diff.setCurrentValue(currVal);
 			diff.setChanged(isDifferent);
 			if (isDifferent) {
-				diff.setOldDisplay(resolveDisplayValue(oldFieldValue));
-				diff.setCurrentDisplay(resolveDisplayValue(currFieldValue));
+				diff.setOldDisplay(resolveDisplayValue(oldFieldValue, displayCache));
+				diff.setCurrentDisplay(resolveDisplayValue(currFieldValue, displayCache));
 			}
 			diffs.add(diff);
 		}
@@ -480,6 +485,10 @@ public class UtilClass {
 	 * referenced entity for revision-accurate auditing.
 	 */
 	public static String resolveDisplayValue(Object value) {
+		return resolveDisplayValue(value, null);
+	}
+	
+	public static String resolveDisplayValue(Object value, Map<String, String> displayCache) {
 		if (!(value instanceof BaseOpenmrsObject)) {
 			return null;
 		}
@@ -487,32 +496,45 @@ public class UtilClass {
 		if (id == null) {
 			return null;
 		}
+		String token = getActualClassName(value) + "#" + id;
 		try {
-			String name = null;
-			if (value instanceof Concept) {
-				Concept concept = Context.getConceptService().getConcept(id);
-				name = concept != null ? concept.getDisplayString() : null;
-			} else if (value instanceof User) {
-				User user = Context.getUserService().getUser(id);
-				name = user != null ? user.getDisplayString() : null;
-			} else if (value instanceof Location) {
-				Location location = Context.getLocationService().getLocation(id);
-				name = location != null ? location.getName() : null;
-			} else if (value instanceof Person) {
-				Person person = Context.getPersonService().getPerson(id);
-				name = (person != null && person.getPersonName() != null) ? person.getPersonName().getFullName() : null;
-			} else if (value instanceof OpenmrsMetadata) {
-				name = ((OpenmrsMetadata) value).getName();
+			// Metadata carries its name in memory (no query) and can vary per revision, so it is not cached.
+			if (value instanceof OpenmrsMetadata && !(value instanceof Location)) {
+				String name = ((OpenmrsMetadata) value).getName();
+				return StringUtils.isBlank(name) ? null : name + " (" + token + ")";
 			}
-			if (StringUtils.isBlank(name)) {
-				return null;
+			// Concept/User/Location/Person need a live lookup; memoize by token to collapse repeats per request.
+			if (displayCache != null && displayCache.containsKey(token)) {
+				return displayCache.get(token);
 			}
-			return name + " (" + getActualClassName(value) + "#" + id + ")";
+			String name = resolveLiveName(value, id);
+			String label = StringUtils.isBlank(name) ? null : name + " (" + token + ")";
+			if (displayCache != null) {
+				displayCache.put(token, label);
+			}
+			return label;
 		}
 		catch (Exception e) {
-			log.debug("Display resolution failed for {}#{}: {}", getActualClassName(value), id, e.getMessage());
+			log.debug("Display resolution failed for {}: {}", token, e.getMessage());
 			return null;
 		}
+	}
+	
+	private static String resolveLiveName(Object value, Integer id) {
+		if (value instanceof Concept) {
+			Concept concept = Context.getConceptService().getConcept(id);
+			return concept != null ? concept.getDisplayString() : null;
+		} else if (value instanceof User) {
+			User user = Context.getUserService().getUser(id);
+			return user != null ? user.getDisplayString() : null;
+		} else if (value instanceof Location) {
+			Location location = Context.getLocationService().getLocation(id);
+			return location != null ? location.getName() : null;
+		} else if (value instanceof Person) {
+			Person person = Context.getPersonService().getPerson(id);
+			return (person != null && person.getPersonName() != null) ? person.getPersonName().getFullName() : null;
+		}
+		return null;
 	}
 	
 	public static Map<String, Class<?>> getFieldTypes(Class<?> clazz) {

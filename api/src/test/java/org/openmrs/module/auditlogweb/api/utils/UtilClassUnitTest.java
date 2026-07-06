@@ -21,6 +21,8 @@ import java.time.LocalDate;
 import java.time.Month;
 import java.util.Date;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -31,6 +33,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 public class UtilClassUnitTest {
 	
@@ -206,6 +210,25 @@ public class UtilClassUnitTest {
 		encounterType.setEncounterTypeId(7);
 		encounterType.setName("Vitals");
 		assertEquals("Vitals (EncounterType#7)", UtilClass.resolveDisplayValue(encounterType));
+	}
+	
+	@Test
+	public void resolveDisplayValue_shouldMemoizeLiveLookupsWithinACache() {
+		Concept reference = new Concept();
+		reference.setConceptId(88);
+		
+		Concept live = mock(Concept.class);
+		when(live.getDisplayString()).thenReturn("Malaria");
+		ConceptService conceptService = mock(ConceptService.class);
+		when(conceptService.getConcept(88)).thenReturn(live);
+		Map<String, String> cache = new HashMap<>();
+		
+		try (MockedStatic<Context> context = mockStatic(Context.class)) {
+			context.when(Context::getConceptService).thenReturn(conceptService);
+			assertEquals("Malaria (Concept#88)", UtilClass.resolveDisplayValue(reference, cache));
+			assertEquals("Malaria (Concept#88)", UtilClass.resolveDisplayValue(reference, cache));
+			verify(conceptService, times(1)).getConcept(88);
+		}
 	}
 	
 	// Dummy Audited class for testing only
